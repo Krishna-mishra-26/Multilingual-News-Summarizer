@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>News Summarizer</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='contract.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 0, 0, 0.3);
+            border-radius: 50%;
+            border-top-color: #007bff;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 10px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .summary-container {
+            margin-top: 15px;
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        
+        .error-message {
+            color: #d9534f;
+            font-weight: bold;
+        }
+        
+        .controls-container {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        
+        .controls-container button,
+        .controls-container select {
+            margin-right: 10px;
+        }
+        
+        .preview-text {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Multilingual News Summarizer with Text-to-Speech</h1>
+
+    <form action="/search" method="POST">
+        <input type="text" name="topic" placeholder="Search for news...">
+        <select name="num_articles">
+            <option>No. of Articles</option>
+            <option value="5">5 Articles</option>
+            <option value="10">10 Articles</option>
+            <option value="15">15 Articles</option>
+            <option value="20">20 Articles</option>
+            <option value="25">25 Articles</option>
+        </select>
+        <button type="submit">Search</button>
+    </form>
+
+    {% if error %}
+    <p style="color: red;">{{ error }}</p>
+    {% endif %}
+
+    <div class="news-container">
+        {% for news in response %}
+        <div class="news-card">
+            <h2>{{ news.news_title }}</h2>
+            {% if news.news_image %}
+            <img src="{{ news.news_image }}" alt="News Image">
+            {% endif %}
+            <p><strong>Source:</strong> {{ news.news_source }}</p>
+            <p><strong>Published on:</strong> {{ news.news_date }}</p>
+            
+            <!-- Store preview text for use in summarization -->
+            <div id="preview-{{ news.news_id }}" class="preview-text">{{ news.news_preview }}</div>
+            
+            <div class="controls-container">
+                <!-- Use data attributes instead of passing values directly to the function -->
+                <button 
+                    onclick="summarizeNews('{{ news.news_id }}', this)" 
+                    data-url="{{ news.news_link }}" 
+                    data-title="{{ news.news_title }}"
+                >Summarize</button>
+                <select id="lang-{{ news.news_id }}">
+                    <option value="en">English</option>
+                    <option value="hi">Hindi</option>
+                    <option value="mr">Marathi</option>
+                </select>
+                <div id="loading-{{ news.news_id }}" style="display: none;" class="loading"></div>
+            </div>
+            
+            <div id="summary-container-{{ news.news_id }}" class="summary-container" style="display: none;">
+                <p id="summary-{{ news.news_id }}"></p>
+                <button onclick="speakText('{{ news.news_id }}')">🔊 Speak Summary</button>
+            </div>
+            
+            <a href="{{ news.news_link }}" target="_blank">Read Full Article</a>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        function summarizeNews(newsId, button) {
+            // Get data from data attributes to avoid issues with quotes in titles
+            const newsUrl = button.getAttribute('data-url');
+            const newsTitle = button.getAttribute('data-title');
+            
+            // Disable the button and show loading indicator
+            button.disabled = true;
+            document.getElementById("loading-" + newsId).style.display = "inline-block";
+            
+            // Clear any previous summary
+            const summaryContainer = document.getElementById("summary-container-" + newsId);
+            const summaryElement = document.getElementById("summary-" + newsId);
+            summaryElement.innerText = "";
+            summaryContainer.style.display = "block";
+            
+            // Get selected language
+            const lang = document.getElementById("lang-" + newsId).value;
+            
+            // Get preview text if available
+            const previewElement = document.getElementById("preview-" + newsId);
+            const previewText = previewElement ? previewElement.textContent : "";
+            
+            fetch("/summarize", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    news_url: newsUrl,
+                    news_title: newsTitle,
+                    news_preview: previewText,
+                    lang: lang
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Hide loading indicator
+                document.getElementById("loading-" + newsId).style.display = "none";
+                button.disabled = false;
+                
+                if (data.error) {
+                    summaryElement.innerHTML = `<span class="error-message">${data.error}</span>`;
+                } else {
+                    summaryElement.innerText = data.summary;
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                document.getElementById("loading-" + newsId).style.display = "none";
+                button.disabled = false;
+                summaryElement.innerHTML = `<span class="error-message">Error while generating summary. Please try again.</span>`;
+            });
+        }
+
+        // Initialize voices when the page loads
+        let allVoices = [];
+
+        // Function to initialize and load available voices
+        function initializeVoices() {
+            // Check if speech synthesis is available
+            if (!('speechSynthesis' in window)) {
+                console.error('Speech synthesis not supported');
+                return;
+            }
+
+            // Get all available voices
+            allVoices = window.speechSynthesis.getVoices();
+            
+            // If voices aren't loaded yet, wait for them
+            if (allVoices.length === 0) {
+                window.speechSynthesis.onvoiceschanged = () => {
+                    allVoices = window.speechSynthesis.getVoices();
+                    console.log('Voices loaded:', allVoices.length);
+                };
+            } else {
+                console.log('Voices loaded:', allVoices.length);
+            }
+        }
+
+        // Initialize voices when page loads
+        window.addEventListener('DOMContentLoaded', initializeVoices);
+
+        function speakText(newsId) {
+            const summary = document.getElementById("summary-" + newsId).innerText;
+            if (!summary || summary.trim() === "") {
+                alert("Please generate a summary first!");
+                return;
+            }
+
+            // Get the selected language
+            const lang = document.getElementById("lang-" + newsId).value;
+            
+            // For browser-based text-to-speech
+            if ('speechSynthesis' in window) {
+                // Cancel any ongoing speech
+                window.speechSynthesis.cancel();
+                
+                // Create a new utterance
+                const utterance = new SpeechSynthesisUtterance(summary);
+                
+                // Make sure we have the latest voices
+                allVoices = window.speechSynthesis.getVoices();
+                
+                // Define language fallbacks (use Hindi for Marathi if no Marathi voice available)
+                const languageFallbacks = {
+                    'mr': ['mr', 'hi', 'en-IN', 'en']
+                };
+                
+                // Set the language regardless of voice availability
+                utterance.lang = lang;
+                
+                // Try to find a matching voice using potential fallbacks
+                let matchingVoice = null;
+                let languagesToTry = languageFallbacks[lang] || [lang];
+                
+                // Try each possible language until we find a voice
+                for (const langCode of languagesToTry) {
+                    const matchingVoices = allVoices.filter(voice => 
+                        voice.lang.startsWith(langCode) || 
+                        voice.name.toLowerCase().includes(langCode));
+                    
+                    if (matchingVoices.length > 0) {
+                        matchingVoice = matchingVoices[0];
+                        console.log(`Using voice: ${matchingVoice.name} for language: ${lang} (via ${langCode})`);
+                        break;
+                    }
+                }
+                
+                // If we found a voice, use it
+                if (matchingVoice) {
+                    utterance.voice = matchingVoice;
+                } else {
+                    console.warn(`No matching voice found for language: ${lang}, falling back to server TTS`);
+                    // Fallback to server-side TTS if no voice is found
+                    useServerTTS(summary, lang, newsId);
+                    return;
+                }
+                
+                // Log for debugging
+                console.log(`Speaking text in language: ${lang}`);
+                console.log(`Available voices: ${allVoices.length}`);
+                
+                // Speak the text
+                window.speechSynthesis.speak(utterance);
+            } else {
+                // Fallback to server-side TTS if available
+                useServerTTS(summary, lang, newsId);
+            }
+        }
+        
+        // Server-side TTS fallback
+        function useServerTTS(text, lang, newsId) {
+            // Show indication that we're using server TTS
+            const summaryElement = document.getElementById("summary-" + newsId);
+            const originalText = summaryElement.innerText;
+            summaryElement.innerHTML = `${originalText} <small style="color:#888">(Processing speech...)</small>`;
+            
+            fetch("/speak", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    text: text,
+                    lang: lang 
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Server TTS failed');
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Server TTS response:", data);
+                summaryElement.innerHTML = originalText;
+            })
+            .catch(error => {
+                console.error("Error with server TTS:", error);
+                alert("Text-to-speech failed. Please try again.");
+                summaryElement.innerHTML = originalText;
+            });
+        }
+    </script>
+</body>
+
+</html>
