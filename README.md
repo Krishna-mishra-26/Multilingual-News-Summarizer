@@ -84,8 +84,9 @@ Open your browser and navigate to `http://127.0.0.1:5000`
 ## Project Structure
 
 ```
-news-summarizer/
+News_Project/
 ├── app.py               # Main Flask application
+├── README.md            # This documentation
 ├── requirements.txt     # Python dependencies
 ├── ml_model/            # Machine learning models
 │   ├── kmeans_model.pkl
@@ -166,3 +167,17 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - NLTK community for natural language processing tools
 - scikit-learn for machine learning capabilities
 - Flask community for the web framework
+
+## Note on Virtual Environment
+
+You can safely delete the `venv` folder when not using the project to save disk space. When you need to run the project again, simply recreate the virtual environment:
+
+```bash
+python -m venv venv
+venv\Scripts\activate  # On Windows
+pip install -r requirements.txt
+```
+
+## Author
+
+- [Krishna Mishra](https://github.com/Krishna-mishra-26)
