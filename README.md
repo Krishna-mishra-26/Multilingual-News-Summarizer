@@ -35,8 +35,8 @@ A web application that allows users to search for news articles, generate concis
 1. **Clone the repository**
 
 ```bash
-git clone https://github.com/yourusername/news-summarizer.git
-cd news-summarizer
+gh repo clone Krishna-mishra-26/Multilingual-News-Summarizer
+cd News_Project
 ```
 
 2. **Create a virtual environment**
